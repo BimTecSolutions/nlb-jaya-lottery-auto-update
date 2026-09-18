@@ -61,7 +61,7 @@ These are set as `env` vars in the workflow file — change them there if needed
 | `MAIN_COLLECTION` | `NLB_Results_All` | Top-level Firestore collection |
 | `SUB_COLLECTION` | `NLB_Jaya` | Sub-collection for this lottery |
 | `MAX_NEW_DRAWS` | `10` | Safety cap on new draws per run |
-| `USE_SELENIUM` | `false` | Set `true` if plain `requests` stops working and you add a Chrome setup step to the workflow |
+| `USE_SELENIUM` | `true` | nlb.lk's results pages are JS-rendered, so this stays on. The workflow installs headless Chrome for it. |
 
 ## Notes
 
@@ -69,7 +69,8 @@ These are set as `env` vars in the workflow file — change them there if needed
   published yet, the script stops immediately (cheap, fast run). If several
   draws are missing (e.g. after downtime), it catches up up to
   `MAX_NEW_DRAWS` in one run.
-- Uses plain `requests` + `BeautifulSoup` by default (no browser needed),
-  matching your other incremental scrapers. Selenium is left as an option
-  but isn't installed by default — add `selenium` to `requirements.txt` and
-  a Chrome install step to the workflow if you ever need it.
+- Uses Selenium with headless Chrome by default, since nlb.lk's results
+  pages are JavaScript-rendered — a plain `requests` call only gets a small
+  empty shell page. The workflow installs Chrome via `browser-actions/setup-chrome`
+  before running the script; Selenium 4.15+'s built-in driver manager handles
+  matching the chromedriver version automatically.
