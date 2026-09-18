@@ -126,9 +126,16 @@ class NLBJayaFirebaseScraper:
                 options.add_argument('--headless=new')
                 options.add_argument('--no-sandbox')
                 options.add_argument('--disable-dev-shm-usage')
+                options.add_argument('--disable-gpu')
+                options.add_argument('--window-size=1280,1696')
                 options.add_argument('--disable-blink-features=AutomationControlled')
                 options.add_experimental_option("excludeSwitches", ["enable-automation"])
                 options.add_experimental_option('useAutomationExtension', False)
+
+                chrome_binary = os.environ.get("CHROME_PATH") or os.environ.get("CHROME_BIN")
+                if chrome_binary:
+                    options.binary_location = chrome_binary
+
                 self._driver = webdriver.Chrome(options=options)
             except Exception as e:
                 print(f"⚠️ Selenium init error: {e}")
@@ -415,7 +422,7 @@ class NLBJayaFirebaseScraper:
 
 
 def main():
-    use_selenium = os.environ.get("USE_SELENIUM", "false").lower() == "true"
+    use_selenium = os.environ.get("USE_SELENIUM", "true").lower() == "true"
     debug = os.environ.get("DEBUG", "false").lower() == "true"
 
     main_collection = os.environ.get("MAIN_COLLECTION", "NLB_Results_All")
