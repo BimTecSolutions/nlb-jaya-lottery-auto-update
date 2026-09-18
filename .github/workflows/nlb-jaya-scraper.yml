@@ -23,9 +23,18 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Install Chrome
+      - name: Install Chrome + matching ChromeDriver
         uses: browser-actions/setup-chrome@v1
         id: setup-chrome
+        with:
+          install-chromedriver: true
+
+      - name: Verify Chrome/ChromeDriver versions
+        run: |
+          echo "Chrome path: ${{ steps.setup-chrome.outputs.chrome-path }}"
+          "${{ steps.setup-chrome.outputs.chrome-path }}" --version
+          echo "ChromeDriver path: ${{ steps.setup-chrome.outputs.chromedriver-path }}"
+          "${{ steps.setup-chrome.outputs.chromedriver-path }}" --version
 
       - name: Run incremental scraper
         env:
@@ -35,4 +44,5 @@ jobs:
           MAX_NEW_DRAWS: "10"
           USE_SELENIUM: "true"
           CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+          CHROMEDRIVER_PATH: ${{ steps.setup-chrome.outputs.chromedriver-path }}
         run: python nlb_jaya_incremental.py
