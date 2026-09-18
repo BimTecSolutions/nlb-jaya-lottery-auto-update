@@ -31,8 +31,9 @@ class NLBJayaFirebaseScraper:
     LOTTERY_SLUG = "nlb-jaya"
     LOTTERY_NAME = "NLB Jaya"
 
-    def __init__(self, use_selenium: bool = False, debug: bool = False):
+    def __init__(self, use_selenium: bool = False, debug: bool = False, require_selenium: bool = False):
         self.use_selenium = use_selenium
+        self.require_selenium = require_selenium
         self.debug = debug
         self.session = requests.Session()
         self.session.headers.update({
@@ -122,6 +123,8 @@ class NLBJayaFirebaseScraper:
             try:
                 from selenium import webdriver
                 from selenium.webdriver.chrome.options import Options
+                from selenium.webdriver.chrome.service import Service
+
                 options = Options()
                 options.add_argument('--headless=new')
                 options.add_argument('--no-sandbox')
@@ -136,33 +139,58 @@ class NLBJayaFirebaseScraper:
                 if chrome_binary:
                     options.binary_location = chrome_binary
 
-                self._driver = webdriver.Chrome(options=options)
+                # Explicitly point at a chromedriver that matches the Chrome
+                # version we installed, instead of trusting whatever stale
+                # chromedriver might already be on PATH (GitHub-hosted
+                # runners ship one, and it can be out of sync).
+                chromedriver_path = os.environ.get("CHROMEDRIVER_PATH")
+                if chromedriver_path:
+                    service = Service(executable_path=chromedriver_path)
+                    self._driver = webdriver.Chrome(service=service, options=options)
+                else:
+                    self._driver = webdriver.Chrome(options=options)
             except Exception as e:
-                print(f"⚠️ Selenium init error: {e}")
+                print(f"❌ Selenium init error: {e}")
+                if self.require_selenium:
+                    raise
                 self.use_selenium = False
         return self._driver
 
     def fetch_page_with_retry(self, url: str, max_retries: int = 3) -> Optional[str]:
+        # Get (or create) the Selenium driver once, outside the retry loop.
+        # If it fails and Selenium is required, let the exception propagate
+        # immediately instead of silently retrying and falling through to
+        # plain `requests` (which returns an unrendered stub page on this
+        # site and would look like "draw not published yet").
+        driver = None
+        if self.use_selenium:
+            driver = self._get_driver()
+
         for attempt in range(max_retries):
             try:
-                if self.use_selenium:
-                    driver = self._get_driver()
-                    if driver:
-                        try:
-                            driver.get(url)
-                            time.sleep(3)
-                            from selenium.webdriver.common.by import By
-                            from selenium.webdriver.support.ui import WebDriverWait
-                            from selenium.webdriver.support import expected_conditions as EC
-                            WebDriverWait(driver, 15).until(
-                                EC.presence_of_element_located((By.TAG_NAME, "body"))
-                            )
-                            return driver.page_source
-                        except Exception as e:
-                            print(f"  Attempt {attempt + 1} Selenium error: {e}")
-                            if attempt < max_retries - 1:
-                                time.sleep(2 ** attempt)
-                            continue
+                if driver:
+                    try:
+                        driver.get(url)
+                        time.sleep(3)
+                        from selenium.webdriver.common.by import By
+                        from selenium.webdriver.support.ui import WebDriverWait
+                        from selenium.webdriver.support import expected_conditions as EC
+                        WebDriverWait(driver, 15).until(
+                            EC.presence_of_element_located((By.TAG_NAME, "body"))
+                        )
+                        return driver.page_source
+                    except Exception as e:
+                        print(f"  Attempt {attempt + 1} Selenium error: {e}")
+                        if attempt < max_retries - 1:
+                            time.sleep(2 ** attempt)
+                        continue
+
+                if self.require_selenium:
+                    # Selenium was required but unavailable; don't silently
+                    # fall back to a plain request that won't get real data.
+                    raise RuntimeError(
+                        "Selenium is required (require_selenium=True) but no driver is available."
+                    )
 
                 resp = self.session.get(url, timeout=30)
                 if resp.status_code == 200 and len(resp.text) > 1000:
@@ -429,7 +457,7 @@ def main():
     sub_collection = os.environ.get("SUB_COLLECTION", "NLB_Jaya")
     max_new_draws = int(os.environ.get("MAX_NEW_DRAWS", "10"))
 
-    scraper = NLBJayaFirebaseScraper(use_selenium=use_selenium, debug=debug)
+    scraper = NLBJayaFirebaseScraper(use_selenium=use_selenium, debug=debug, require_selenium=use_selenium)
     scraper.init_firebase()
 
     try:
