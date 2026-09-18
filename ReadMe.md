@@ -15,23 +15,23 @@ it does nothing. Runs on GitHub Actions every 5 minutes.
 
 ## 2. Add your Firebase service account as a secret
 
-1. Base64-encode your `serviceAccount.json` file:
+Simplest option — paste the raw JSON in directly:
 
-   - macOS/Linux:
-     ```bash
-     base64 -i serviceAccount.json | tr -d '\n' | pbcopy   # copies to clipboard (macOS)
-     # or, without pbcopy:
-     base64 -i serviceAccount.json | tr -d '\n' > encoded.txt
-     ```
-   - This avoids any issues with quotes/newlines in the raw JSON.
-
-2. In your GitHub repo: **Settings → Secrets and variables → Actions → New repository secret**
-   - Name: `FIREBASE_SERVICE_ACCOUNT_BASE64`
-   - Value: paste the base64 string from step 1.
+1. Open your `serviceAccount.json` file and copy its **entire contents**
+   (from the opening `{` to the closing `}`).
+2. In your GitHub repo: **Settings → Secrets and variables → Actions →
+   New repository secret**
+   - Name: `FIREBASE_SERVICE_ACCOUNT_JSON`
+   - Value: paste the full JSON content. Don't add extra quotes around it —
+     just the JSON as-is.
 3. Save.
 
-The workflow decodes this secret in memory at runtime — the credentials file
-never touches disk or the repo.
+The workflow passes this secret to the script as an env var at runtime — the
+credentials file itself never touches the repo. The script also accepts a
+base64-encoded version in `FIREBASE_SERVICE_ACCOUNT_BASE64` if you'd rather
+encode it first, and auto-detects which format you used — but plain JSON in
+`FIREBASE_SERVICE_ACCOUNT_JSON` is the least error-prone, so that's what the
+workflow file uses by default.
 
 ## 3. First run / backfill
 
