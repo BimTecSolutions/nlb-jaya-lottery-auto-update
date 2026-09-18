@@ -47,31 +47,66 @@ class NLBJayaFirebaseScraper:
     # ------------------------------------------------------------------
     # Firebase
     # ------------------------------------------------------------------
+    def _load_service_account_info(self) -> dict:
+        """
+        Load the service account JSON from whichever source is available.
+        Accepts either raw JSON or base64-encoded JSON in either env var,
+        so a misconfigured secret (e.g. raw JSON pasted into the "base64"
+        var) still works instead of failing with a cryptic decode error.
+        """
+        candidates = []
+        for var in ("FIREBASE_SERVICE_ACCOUNT_JSON", "FIREBASE_SERVICE_ACCOUNT_BASE64"):
+            val = os.environ.get(var)
+            if val:
+                candidates.append((var, val.strip()))
+
+        if not candidates and os.path.exists("serviceAccount.json"):
+            with open("serviceAccount.json", "r", encoding="utf-8") as f:
+                return json.load(f)
+
+        if not candidates:
+            raise RuntimeError(
+                "No Firebase credentials found. Set FIREBASE_SERVICE_ACCOUNT_JSON "
+                "(raw JSON) or FIREBASE_SERVICE_ACCOUNT_BASE64 (base64-encoded JSON), "
+                "or provide serviceAccount.json locally."
+            )
+
+        last_error = None
+        for var_name, val in candidates:
+            # Strip accidental wrapping quotes, e.g. if someone pasted '{"...": ...}'
+            cleaned = val.strip().strip("'").strip('"')
+
+            # Try as raw JSON first.
+            try:
+                return json.loads(cleaned)
+            except json.JSONDecodeError:
+                pass
+
+            # Fall back to base64.
+            try:
+                decoded = base64.b64decode(cleaned, validate=True)
+                return json.loads(decoded.decode("utf-8"))
+            except Exception as e:
+                last_error = e
+                print(f"⚠️ Could not parse {var_name} as raw JSON or valid base64 JSON: {e}")
+
+        raise RuntimeError(
+            f"Found credential env var(s) but couldn't parse them as JSON or base64 JSON. "
+            f"Last error: {last_error}. Double check the secret value was copied in full, "
+            f"with no extra quotes added around it."
+        )
+
     def init_firebase(self):
         """
         Initialize Firestore. Looks for credentials in this order:
-          1. FIREBASE_SERVICE_ACCOUNT_BASE64 env var (base64-encoded JSON) — used in CI
-          2. FIREBASE_SERVICE_ACCOUNT_JSON env var (raw JSON string)
+          1. FIREBASE_SERVICE_ACCOUNT_JSON env var (raw JSON string) — simplest, used in CI
+          2. FIREBASE_SERVICE_ACCOUNT_BASE64 env var (base64-encoded JSON) — also supported
           3. serviceAccount.json file in the working directory — used locally
         """
         try:
             if not firebase_admin._apps:
-                b64 = os.environ.get("FIREBASE_SERVICE_ACCOUNT_BASE64")
-                raw_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
-
-                if b64:
-                    info = json.loads(base64.b64decode(b64).decode("utf-8"))
-                    cred = credentials.Certificate(info)
-                elif raw_json:
-                    info = json.loads(raw_json)
-                    cred = credentials.Certificate(info)
-                elif os.path.exists("serviceAccount.json"):
-                    cred = credentials.Certificate("serviceAccount.json")
-                else:
-                    raise RuntimeError(
-                        "No Firebase credentials found. Set FIREBASE_SERVICE_ACCOUNT_BASE64 "
-                        "or FIREBASE_SERVICE_ACCOUNT_JSON, or provide serviceAccount.json."
-                    )
+                info = self._load_service_account_info()
+                cred = credentials.Certificate(info)
                 firebase_admin.initialize_app(cred)
             self.db = firestore.client()
             print("✅ Firebase initialized")
